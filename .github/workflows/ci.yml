@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-smoke-test:
+    name: Lint & Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (CPU-only torch)
+        run: |
+          pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install pyflakes PyYAML
+
+      - name: Syntax check with pyflakes
+        run: pyflakes src/
+
+      - name: Validate config.yaml
+        run: |
+          python - <<'EOF'
+          import yaml
+          with open("config.yaml") as f:
+              cfg = yaml.safe_load(f)
+          required = ["project", "wandb", "data", "model", "training", "eval", "device"]
+          for key in required:
+              assert key in cfg, f"Missing config section: {key}"
+          print(f"config.yaml OK — {len(cfg)} top-level keys")
+          EOF
+
+      - name: Verify imports
+        run: |
+          cd src
+          python -c "from modules import SelfAttention; print('modules.py ✓')"
+          python -c "from generator import ConditionalGenerator, AdaptiveResidualBlock; print('generator.py ✓')"
+          python -c "from discriminator import MultiscaleAgeAwareDiscriminator, DiscriminatorBlock; print('discriminator.py ✓')"
+          python -c "from cyclegan import FaceAgingCycleGAN, FaceAgingLoss, EMAModel, DiversityImagePool; print('cyclegan.py ✓')"
+
+      - name: Smoke test — forward pass (CPU)
+        run: |
+          python - <<'EOF'
+          import sys; sys.path.insert(0, "src")
+          import torch
+          from generator import ConditionalGenerator
+          from discriminator import MultiscaleAgeAwareDiscriminator
+          from cyclegan import EMAModel, DiversityImagePool
+
+          B, C, H, W = 2, 3, 64, 64   # Reduced size for CPU speed
+          ngf = ndf = 32
+          n_res = 4
+          num_ages = 101
+
+          # Generator
+          G = ConditionalGenerator(C, C, ngf, n_res, num_ages)
+          x   = torch.randn(B, C, H, W)
+          age = torch.randint(0, num_ages, (B,))
+          out = G(x, age)
+          assert out.shape == (B, C, H, W), f"G output shape mismatch: {out.shape}"
+          assert out.min() >= -1.01 and out.max() <= 1.01, "G output outside [-1,1]"
+          print(f"Generator: {x.shape} → {out.shape}  params: {sum(p.numel() for p in G.parameters()):,}")
+
+          # Discriminator
+          D = MultiscaleAgeAwareDiscriminator(C, ndf, n_layers=2, num_ages=num_ages, num_scales=2)
+          preds, feats, age_pred = D(out.detach(), age)
+          assert len(preds) == 2, f"Expected 2 scale preds, got {len(preds)}"
+          print(f"Discriminator: {out.shape} → {len(preds)} scales  age_pred: {age_pred.shape}")
+
+          # EMA
+          ema = EMAModel(G, decay=0.999)
+          ema.update()
+          print(f"EMA update OK")
+
+          # Pool
+          pool = DiversityImagePool(pool_size=10)
+          pool.query(out.detach())
+          print(f"DiversityImagePool OK")
+
+          print("All smoke tests passed.")
+          EOF

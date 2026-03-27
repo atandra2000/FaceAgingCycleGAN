@@ -1,0 +1,126 @@
+# Face Aging Project Configuration - A6000 Optimized
+
+project:
+  name: "face_aging_gan"
+  version: "1.0.0"
+  description: "CycleGAN-based face aging and de-aging model"
+
+# Weights & Biases Configuration
+wandb:
+  enabled: true
+  project: "face-aging-cyclegan"
+  entity: "atandrabharati-self"
+  run_name: "FaceAgingCycleGAN"
+  tags: ["cyclegan", "face-aging", "RTX6000Ada", "production"]
+  notes: "Bidirectional face aging optimized for NVIDIA RTX6000Ada GPU"
+  log_interval: 1000           # Log metrics every N batches
+  log_images_interval: 2500    # Log sample images every N batches
+  log_model: true              # Upload model checkpoints to W&B
+
+# Data Configuration
+data:
+  dataset_name: "imdb-wiki-cropped-face-images"
+  data_root: "imdb-wiki-cropped-face-data"
+  image_size: 256
+  channels: 3
+  
+  # Age group definitions
+  age_groups:
+    young: [0, 30]
+    old: [50, 100]
+  young_max_age: 30
+  old_min_age: 50
+  
+  # Augmentation settings
+  use_albumentations: true
+  albumentations_probability: 0.8
+  
+  # DataLoader settings
+  balance_classes: true
+  prefetch_factor: 8
+  num_workers: 16
+  persistent_workers: true
+  cache_size: 1500
+  pin_memory: true
+  drop_last: true
+
+# Model Configuration
+model:
+  architecture: "cyclegan"
+  input_nc: 3
+  output_nc: 3
+  ngf: 64                    # Generator filters
+  ndf: 64                    # Discriminator filters
+  n_residual_blocks: 9       # Standard for 256x256
+  num_ages: 101
+  init_type: "normal"
+  init_gain: 0.02
+
+# Training Configuration
+training:
+  batch_size: 8
+  num_epochs: 50
+  accumulation_steps: 2
+  
+  # Optimizer settings
+  learning_rate:
+    generator: 0.0002
+    discriminator: 0.0002
+  betas: [0.5, 0.999]
+  weight_decay: 0.0
+  
+  # Loss weights
+  lambda_cycle: 10.0          # Cycle consistency (uses perceptual VGG loss)
+  lambda_identity: 5.0        # Identity preservation
+  lambda_age: 0.1             # Age conditioning
+  lambda_fm: 1.0              # Feature matching
+  lambda_gp: 10.0             # Gradient penalty (disabled for stability)
+  
+  # Training stability
+  pool_size: 50
+  grad_clip: 1.0
+  diversity_threshold: 0.8
+  
+  # Precision & Performance
+  use_amp: false             # Mixed precision (disable if unstable)
+  
+  # EMA (Exponential Moving Average)
+  use_ema: true
+  ema_decay: 0.9999
+  
+  seed: 42
+  
+  # Learning Rate Scheduler
+  lr_scheduler:
+    type: "cosine"           # Cosine annealing
+    start_epoch: 20          # Start decay after this epoch
+    min_lr: 0.000001
+  
+  # Checkpointing
+  save_freq: 1               # Save every N epochs
+  checkpoint_dir: "checkpoints"
+  keep_best_n: 3
+  resume_from: '/home/FaceAging/checkpoints/checkpoint_epoch_4.pth'          # Set to checkpoint path to resume training
+  
+  # Warmup
+  warmup_epochs: 5
+  
+  # NaN detection
+  detect_nan: true
+  skip_nan_batch: true
+  max_nan_batches: 5
+
+# Evaluation Configuration
+eval:
+  every_n_epochs: 2
+  early_stopping_patience: 30
+  save_val_images: true
+  num_val_images: 4
+  fid_calculation: true
+  lpips_calculation: true
+
+# Hardware Configuration
+device:
+  use_cuda: true
+  gpu_ids: [0]
+  cudnn_benchmark: true

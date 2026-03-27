@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Data
+data/
+imdb-wiki-cropped-face-data/
+*.mat
+*.zip
+*.tar.gz
+
+# Checkpoints (large — tracked via W&B Artifacts)
+checkpoints/
+*.pth
+
+# Results
+results/*.png
+results/*.jpg
+!results/.gitkeep
+
+# W&B
+wandb/
+.wandb/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# Notebooks
+.ipynb_checkpoints/
+*.ipynb
