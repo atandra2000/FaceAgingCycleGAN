@@ -11,8 +11,13 @@ from generator import ConditionalGenerator  # From generator.py
 from discriminator import MultiscaleAgeAwareDiscriminator  # From discriminator.py
 
 class EMAModel:
-    """Exponential Moving Average model for generator stabilization."""
-    
+    """Exponential Moving Average model for generator stabilization.
+
+    Uses per-parameter tensor cloning instead of copy.deepcopy to avoid
+    RuntimeError with modules that carry spectral_norm / weight_norm hooks
+    (deepcopy is unsupported for those in recent PyTorch versions).
+    """
+
     def __init__(self, model, decay=0.999):
         """
         Args:
@@ -21,30 +26,34 @@ class EMAModel:
         """
         self.model = model
         self.decay = decay
-        self.shadow = copy.deepcopy(model)
-        self.shadow.eval()
-        
-        # Freeze shadow model
-        for p in self.shadow.parameters():
-            p.requires_grad = False
-    
+        # Clone parameter values — no deepcopy of the module object itself
+        self._ema_params = {
+            name: param.data.clone().detach()
+            for name, param in model.named_parameters()
+        }
+
     def update(self):
-        """Update shadow model with EMA."""
+        """Update EMA weights."""
         with torch.no_grad():
-            for shadow_param, model_param in zip(
-                self.shadow.parameters(), self.model.parameters()
-            ):
-                shadow_param.copy_(
-                    self.decay * shadow_param + (1 - self.decay) * model_param
+            for name, param in self.model.named_parameters():
+                self._ema_params[name].mul_(self.decay).add_(
+                    param.data, alpha=1.0 - self.decay
                 )
-    
+
+    def apply_shadow(self):
+        """Copy EMA weights into the live model for inference."""
+        for name, param in self.model.named_parameters():
+            param.data.copy_(self._ema_params[name])
+
     def state_dict(self):
-        """Get shadow model state dict for checkpointing."""
-        return self.shadow.state_dict()
-    
+        """Get EMA parameter dict for checkpointing."""
+        return {k: v.clone() for k, v in self._ema_params.items()}
+
     def load_state_dict(self, state_dict):
-        """Load shadow model state dict from checkpoint."""
-        self.shadow.load_state_dict(state_dict)
+        """Load EMA parameter dict from checkpoint."""
+        for name in self._ema_params:
+            if name in state_dict:
+                self._ema_params[name].copy_(state_dict[name])
 
 class DiversityImagePool:
     """Image pool with optimal transport approximation for diversity."""
