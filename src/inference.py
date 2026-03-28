@@ -4,7 +4,6 @@ Customized for your trained model (31 epochs)
 """
 
 import torch
-import torch.nn as nn
 from PIL import Image
 import numpy as np
 import argparse
@@ -15,8 +14,6 @@ import yaml
 
 # Import your actual model classes
 from cyclegan import FaceAgingCycleGAN
-from generator import ConditionalGenerator
-from discriminator import MultiscaleAgeAwareDiscriminator
 
 
 class AgeTransformer:
@@ -185,7 +182,7 @@ class AgeTransformer:
         
         # Save original image too
         original_img = Image.open(image_path)
-        original_path = os.path.join(output_dir, f'age_original.jpg')
+        original_path = os.path.join(output_dir, 'age_original.jpg')
         original_img.save(original_path)
         print(f"Saved original: {original_path}")
         
@@ -350,7 +347,7 @@ def main():
     
     # Process based on mode
     if args.mode == 'single':
-        print(f"=== Single Image Mode ===")
+        print("=== Single Image Mode ===")
         print(f"Input: {args.input}")
         print(f"Target age: {args.target_age}")
         print(f"Direction: {args.direction}")
@@ -363,7 +360,7 @@ def main():
         print(f"\n✓ Done! Output saved to: {args.output}")
     
     elif args.mode == 'batch':
-        print(f"=== Batch Processing Mode ===")
+        print("=== Batch Processing Mode ===")
         print(f"Input directory: {args.input}")
         print(f"Target age: {args.target_age}")
         print(f"Direction: {args.direction}")
@@ -372,7 +369,7 @@ def main():
         transformer.batch_transform(args.input, args.target_age, args.output, args.direction)
     
     elif args.mode == 'progression':
-        print(f"=== Age Progression Mode ===")
+        print("=== Age Progression Mode ===")
         print(f"Input: {args.input}")
         print(f"Age range: {args.start_age} → {args.end_age}")
         print(f"Steps: {args.num_steps}")
@@ -385,7 +382,7 @@ def main():
         print(f"\n✓ Done! Progression saved to: {args.output}/")
     
     elif args.mode == 'estimate':
-        print(f"=== Age Estimation Mode ===")
+        print("=== Age Estimation Mode ===")
         print(f"Input: {args.input}")
         print()
         
