@@ -3,7 +3,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import copy
 from torchvision.models import vgg19, VGG19_Weights  # For perceptual loss
 
 # Imports from required modules
