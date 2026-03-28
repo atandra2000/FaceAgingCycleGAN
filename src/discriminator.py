@@ -30,7 +30,9 @@ class MultiscaleAgeAwareDiscriminator(nn.Module):
                  dropout_rate=0.1, use_attention=True):
         super(MultiscaleAgeAwareDiscriminator, self).__init__()
         self.num_scales = num_scales
-        self.age_embedding = nn.Embedding(num_ages, ndf * 8)  # For adaptive fusion in age head
+        # age_embedding must match finest-scale feature channels for expand_as fusion
+        finest_ch = min(ndf * (2 ** n_layers), ndf * 8)
+        self.age_embedding = nn.Embedding(num_ages, finest_ch)
 
         # Shared feature extractor backbone per scale
         self.feature_extractors = nn.ModuleList()
