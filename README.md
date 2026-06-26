@@ -50,14 +50,131 @@ Training was tracked end-to-end with **Weights & Biases** on an NVIDIA RTX 6000 
 
 ## Architecture
 
+### End-to-End Pipeline
+
+```mermaid
+flowchart LR
+    subgraph GEN["Generators (per-layer AdaIN conditioning)"]
+        direction TB
+        GYO["G_Y2O<br/>Young → Old"]:::g1
+        GOY["G_O2Y<br/>Old → Young"]:::g2
+    end
+    subgraph DIS["MultiscaleAgeAwareDiscriminator"]
+        direction TB
+        D1["PatchGAN 256×256"]:::d
+        D2["PatchGAN 128×128"]:::d
+        D3["PatchGAN 64×64"]:::d
+        AGE["Age-prediction head<br/>101-class mean-residue"]:::d
+    end
+    subgraph LOSS["5-Component Loss"]
+        direction TB
+        L1["LSGAN adversarial"]:::l1
+        L2["VGG-19 perceptual cycle<br/>(weight 10)"]:::l2
+        L3["L1 identity<br/>(weight 5)"]:::l2
+        L4["Feature matching"]:::l1
+        L5["R1 gradient penalty<br/>(weight 10)"]:::l1
+        L6["Age mean-residue<br/>(weight 0.1)"]:::l2
+    end
+
+    Y["Young face x_y"]:::in --> GYO
+    O["Old face x_o"]:::in --> GOY
+    A_Y["Age a_y"]:::in --> GYO
+    A_O["Age a_o"]:::in --> GOY
+
+    GYO -->|"fake old x̃_o"| D1
+    GOY -->|"fake young x̃_y"| D1
+    D1 --> D2
+    D2 --> D3
+    D3 --> AGE
+    GYO --> LOSS
+    GOY --> LOSS
+    D1 --> LOSS
+    O --> LOSS
+    Y --> LOSS
+
+    classDef in fill:#e0e7ff,stroke:#3730a3,color:#000
+    classDef g1 fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef g2 fill:#fce7f3,stroke:#9d174d,color:#000
+    classDef d fill:#fed7aa,stroke:#9a3412,color:#000
+    classDef l1 fill:#fde68a,stroke:#b45309,color:#000
+    classDef l2 fill:#bbf7d0,stroke:#15803d,color:#000
+```
+
+### Cycle Consistency &mdash; the loss that makes unpaired data work
+
+```mermaid
+flowchart LR
+    A["x_y (real young)"]:::real --> GYO["G_Y2O"]:::g1
+    GYO --> B["x̃_o (fake old)"]:::fake
+    B --> GOY["G_O2Y"]:::g2
+    GOY --> C["x̂_y (reconstructed young)"]:::rec
+    C -. "L1 identity +<br/>VGG-19 perceptual cycle<br/>weight 10" .-> A
+
+    X["x_o (real old)"]:::real --> GOY2["G_O2Y"]:::g2
+    GOY2 --> Y["x̃_y (fake young)"]:::fake
+    Y --> GYO2["G_Y2O"]:::g1
+    GYO2 --> Z["x̂_o (reconstructed old)"]:::rec
+    Z -. "L1 identity +<br/>VGG-19 perceptual cycle<br/>weight 10" .-> X
+
+    classDef real fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef fake fill:#fce7f3,stroke:#9d174d,color:#000
+    classDef rec fill:#bbf7d0,stroke:#15803d,color:#000
+    classDef g1 fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef g2 fill:#fce7f3,stroke:#9d174d,color:#000
+```
+
+> Without cycle consistency (weight 10) the generators ignore the input image and produce mode-collapsed outputs.
+
+### Per-Layer AdaIN Conditioning &mdash; the novel hybrid
+
+```mermaid
+flowchart TB
+    AGE["Target age a (0–100)"]:::in
+    EMB["Age Embedding<br/>Linear · ReLU · Linear"]:::emb
+    STYLE["Style MLP<br/>→ 2 × ngf × 4"]:::style
+    subgraph BLOCK["Adaptive ResBlock (applied at every one of 9 layers)"]
+        direction TB
+        CONV1["Spectral Conv 3×3"]:::conv
+        IN1["InstanceNorm"]:::norm
+        ADA1["AdaIN shift & scale"]:::adain
+        RELU1["ReLU"]:::act
+        CONV2["Spectral Conv 3×3"]:::conv
+        IN2["InstanceNorm"]:::norm
+        ADA2["AdaIN shift & scale"]:::adain
+        DROP["Dropout"]:::norm
+        RES["+ Residual"]:::res
+    end
+    OUT["Output feature map"]:::out
+
+    AGE --> EMB --> STYLE
+    STYLE -.->|"γ (scale)"| ADA1
+    STYLE -.->|"β (shift)"| ADA1
+    STYLE -.->|"γ (scale)"| ADA2
+    STYLE -.->|"β (shift)"| ADA2
+    BLOCK --> OUT
+
+    classDef in fill:#e0e7ff,stroke:#3730a3,color:#000
+    classDef emb fill:#fde68a,stroke:#b45309,color:#000
+    classDef style fill:#fed7aa,stroke:#9a3412,color:#000
+    classDef conv fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef norm fill:#f3f4f6,stroke:#374151,color:#000
+    classDef adain fill:#fbcfe8,stroke:#831843,color:#000
+    classDef act fill:#fce7f3,stroke:#9d174d,color:#000
+    classDef res fill:#f3f4f6,stroke:#374151,color:#000
+    classDef out fill:#bbf7d0,stroke:#15803d,color:#000
+```
+
+> Per-layer (not single-shot) is the key novelty &mdash; every ResBlock consumes the target-age embedding.
+
 ### Conditional Generator (`G_Y2O` / `G_O2Y`)
 
-Both generators share the same `ConditionalGenerator` architecture — a ResNet-9 backbone enhanced with per-layer AdaIN conditioning and spectral normalisation throughout.
+Both generators share the same `ConditionalGenerator` architecture &mdash; a ResNet-9 backbone enhanced with per-layer AdaIN conditioning and spectral normalisation throughout.
 
 ```
 Input image (3×256×256)  +  Target age (integer 0–100)
          │                            │
          │                    Age Embedding [ngf×8]
+
          │                            │
          │                   Per-layer Style MLP → [2×ngf×4]
          ▼
