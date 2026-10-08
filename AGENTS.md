@@ -6,8 +6,7 @@
 > **Project:** `Vision/FaceAgingCycleGAN/` · **Type:** conditional GAN
 > **Task:** bidirectional face age transformation (young↔old) at 256×256
 > **Hardware:** RTX 6000 Ada 48GB · **Status:** 31/50 epochs
-> **Architecture detail:** see `README.md §10`; cross-project guidance at
-> `.agents/skills/generative-vision-gans-vaes/SKILL.md §2`.
+> **Architecture detail:** see `README.md §10`.
 
 ## 1. Subagent: `cyclegan-debugger`
 

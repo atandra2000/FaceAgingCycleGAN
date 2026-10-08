@@ -43,3 +43,6 @@ wandb/
 # Notebooks
 .ipynb_checkpoints/
 *.ipynb
+
+# codegraph index (binary, local only)
+.codegraph/
